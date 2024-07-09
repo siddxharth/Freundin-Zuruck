@@ -8,7 +8,7 @@ const bcrypt = require("bcrypt");
 const app = express();
 const router = express.Router();
 
-// const questions = require("./questions");
+const questions = require("./questions");
 const mongoose = require("mongoose");
 const User = require("./models/User");
 const Quiz = require("./models/Quiz");
@@ -178,8 +178,6 @@ const insertQuestions = async () => {
     }
 };
 
-// insertQuestions();
-
 async function getRandomQuestions(count) {
     const questions = await Question.aggregate([
         { $sample: { size: count } },
@@ -238,7 +236,27 @@ router.post("/quizzes", async (req, res) => {
         ])
         .exec();
     console.log(quizzes);
-    res.send(quizzes);
+    return res.send(quizzes);
+});
+
+router.get("/quiz/:id", async (req, res) => {
+    try {
+        const id = req.params["id"];
+        const quiz = await Quiz.findOne({ _id: id }).populate([
+            { path: "questions", select: "question" },
+            { path: "friends", select: "name" },
+        ]);
+        if (quiz) {
+            return res.send({ message: "Quiz found.", quiz });
+        } else {
+            return res.send({ message: "Quiz not found." });
+        }
+    } catch (error) {
+        if (error.message.includes("Cast to ObjectId failed for value")) {
+            return res.send({ error: "Invalid quiz id." });
+        }
+        return res.send({ error: error.message });
+    }
 });
 
 router.post("/question", async (req, res) => {
@@ -283,44 +301,6 @@ router.post("/question/delete", async (req, res) => {
     }
 });
 
-router.post("/friends", async (req, res) => {
-    try {
-        const body = req.body;
-        const friends = body.friends;
-        if (!friends) {
-            return res.send({ error: "Friends are required." });
-        }
-        friends.forEach(async (friend) => {
-            const duplicate = await Friend.findOne({
-                name: friend.name,
-                quiz: friend.quiz,
-            });
-            if (duplicate) {
-                return res.send({ error: "Some friends already exist." });
-            }
-        });
-        const result = await Friend.insertMany([...friends]);
-        return res.send({ message: "Added friends.", result });
-    } catch (error) {
-        return res.send({ error: error.message });
-    }
-});
-
-router.post("/fetch/quiz", async (req, res) => {
-    try {
-        const body = req.body;
-        const result = await Quiz.find({ _id: body.quiz_id })
-            .populate({
-                path: "questions",
-            })
-            .populate({ path: "creator", select: ["name", "email"] });
-
-        return res.send(result[0]);
-    } catch (error) {
-        return res.send({ error: error.message });
-    }
-});
-
 router.post("/fetch/user", async (req, res) => {
     try {
         const body = req.body;
@@ -335,8 +315,18 @@ router.post("/", authenticateToken, (req, res) => {
     return res.send({ haha: "haha" });
 });
 
+router.get("/admin/submit/questions", (req, res) => {
+    try {
+        insertQuestions();
+        return res.send({ message: "Questions inserted." });
+    } catch (error) {
+        return res.send({ error: error.message });
+    }
+});
+
 app.use("/api/v1/", router);
 
 app.listen(process.env.PORT, () => {
+    console.log(process.env.MONGODB_URI);
     console.log(`Server running on port ${process.env.PORT}`);
 });
